@@ -3,6 +3,7 @@ package server
 import (
 	"flag"
 	"os"
+	"time"
 	"video-chat/internal/handlers"
 	w "video-chat/pkg/webrtc"
 	"github.com/gofiber/fiber/v2"
@@ -13,7 +14,7 @@ import (
 )
 
 var (
-	addr = flag.String("addr,":"+os.Getenv("POST"),"")
+	addr = flag.String("addr",":"+os.Getenv("POST"),"")
 	cert = flag.String("cert","","")
 	key = flag.String("key","","")
 )
@@ -27,8 +28,8 @@ func Run() error {
 
 	engine := html.New("./views",".html")
 	app := fiber.New(fiber.Config{Views: engine})
-	app.User(logger.New())
-	app.User(cors.New())
+	app.Use(logger.New())
+	app.Use(cors.New())
 
 	app.Get("/", handlers.Welcome)
 	app.Get("/room/create", handlers.RoomCreate)
@@ -58,6 +59,7 @@ func Run() error {
 }
 
 func dispatchKeyFrames(){
+	//đây chính là khung hình chính điều phối hiển thị live của từng người dùng
 	for range time.NewTicker(time.Second *3).C{
 		for _,room := range w.Rooms{
 			room.Peers.DispatchKeyFrame()
