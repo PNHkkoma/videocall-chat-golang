@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	w "video-chat/pkg/webrtc"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
 	guuid "github.com/google/uuid"
@@ -30,10 +31,24 @@ func RoomWebsocket(c *websocket.Conn){
 		return
 	}
 	_,_, room := createOrGetRoom(uuid)
+	w.RoomConn(c, room.Peers)
+}
+//chức năng tạo (nếu chưa có) hoặc lấy phòng
+func createOrGetRoom (uuid string)(String, string, *w.Room){
+	//Room have type is webrtc
+	
+}
+
+func RoomViewerWebsocket(c *websocket.Conn){
 
 }
 
-func createOrGetRoom (uuid string)(String, string, Room){
-	//Room have type is webrtc
+func RoomViewerConn(c *websocket.Conn, p *w.Peers){
 
+}
+
+//xác định thông báo websoc trông ntn để all mess di chuyển giữa websoc
+type websocketMesage struct{
+	Event string 'json:"event"',
+	Data string 'json:"data"'
 }
