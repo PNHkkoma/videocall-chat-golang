@@ -3,12 +3,14 @@ package handlers
 import (
 	"video-chat/pkg/chat"
 	w "video-chat/pkg/webrtc"
+
+	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
 )
 
 //sử lý trò truyện
-func RoomChat(c *firber.Ctx) error{
-	return c.Render("chat", fiber.Map(), "layouts/main")
+func RoomChat(c *fiber.Ctx) error{
+	return c.Render("chat", fiber.Map{}, "layouts/main")
 }
 
 //kết nối phòng chat

@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/sha256"
 	"fmt"
+	"os"
 	"time"
 
 	"video-chat/pkg/chat"
@@ -11,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
 	guuid "github.com/google/uuid"
+	"github.com/pion/webrtc/v3"
 )
 
 //return 1 room have id is google uuid
@@ -24,15 +26,21 @@ func Room(c *fiber.Ctx) error {
 		c.Status(400)
 		return nil;
 	}
+
+	ws := "ws"
+	if os.Getenv("ENVIRONMENT") == "PRODUCTION" {
+		ws = "wss"
+	}
+
 	uuid,suuid,_ := createOrGetRoom(uuid)
 	return c.Render("peer", fiber.Map{
-		//sprintf giúp cấu trúc lại truỗi
-		"RoomWebSocketAddr": fmt.Sprintf("%s://%s/room%s/websocket", ws, c.Hostname(), uuid),
-		"RoomLink":fmt.Sprintf("%s://%s/room/%s", c.Protocol(), c.Hostname(), uuid),
-		"ChatWebSocketAddr":fmt.Sprintf("%s://%s/room/%s/chat/websocket", ws, c.Hostname(), uuid),
-		"ViewerWebSocketAddr":fmt.Sprintf("%s://%s/room/%s/viewer/websocket", ws, c.Hostname(), uuid),
-		"StreamLink":fmt.Sprintf("%s://%s/stream/%s", c.Protocol(), c.Hostname(), suuid),
-		"Type":"",
+		//sprintf để định nghĩa lại string
+		"RoomWebsocketAddr":   fmt.Sprintf("%s://%s/room/%s/websocket", ws, c.Hostname(), uuid),
+		"RoomLink":            fmt.Sprintf("%s://%s/room/%s", c.Protocol(), c.Hostname(), uuid),
+		"ChatWebsocketAddr":   fmt.Sprintf("%s://%s/room/%s/chat/websocket", ws, c.Hostname(), uuid),
+		"ViewerWebsocketAddr": fmt.Sprintf("%s://%s/room/%s/viewer/websocket", ws, c.Hostname(), uuid),
+		"StreamLink":          fmt.Sprintf("%s://%s/stream/%s", c.Protocol(), c.Hostname(), suuid),
+		"Type":                "room",
 	}, "layouts/main")
 }
 
@@ -48,14 +56,15 @@ func RoomWebsocket(c *websocket.Conn){
 func createOrGetRoom (uuid string)(string, string, *w.Room){
 	//Room have type is webrtc
 	w.RoomsLock.Lock()
-	defer w.RoomsLock.UnLock()
+	defer w.RoomsLock.Unlock()
+
 	h := sha256.New()
 	h.Write([]byte(uuid)) //băm uuid
 	suuid := fmt.Sprintf("%x", h.Sum(nil))
 
 	if room := w.Rooms[uuid]; room != nil {
 		if _, ok := w.Streams[suuid]; !ok{
-			w.Stream[suuid] = room
+			w.Streams[suuid] = room
 		}
 		return uuid, suuid, room
 	}
@@ -67,7 +76,7 @@ func createOrGetRoom (uuid string)(string, string, *w.Room){
 		Hub: hub,
 	}
 	w.Rooms[uuid] = room
-	w.Stream[suuid] = room
+	w.Streams[suuid] = room
 	go hub.Run()
 	return uuid, suuid, room
 
@@ -85,7 +94,7 @@ func RoomViewerWebsocket(c *websocket.Conn){
 		RoomViewerConn(c, peer.Peers)
 		return
 	}
-	w.RoomsLock.UnLock()
+	w.RoomsLock.Unlock()
 }
 
 func RoomViewerConn(c *websocket.Conn, p *w.Peers){

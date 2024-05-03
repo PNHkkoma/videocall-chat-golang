@@ -17,7 +17,7 @@ func NewHub() *Hub{
 		broadcast: make(chan []byte), //có vẻ cái này sẽ dùng nén gói tin...
 		register: make(chan *Client),
 		unregister: make(chan *Client),
-		client: make(map[*Client]bool),
+		clients: make(map[*Client]bool),
 	}
 }
 
@@ -32,12 +32,12 @@ func (h *Hub) Run(){
 		case client := <-h.unregister:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
-				close(client.send)
+				close(client.Send)
 			}
 		case message := <-h.broadcast:
 			for client := range h.clients{
 				select{
-				case client.send <- message:
+				case client.Send <- message:
 				default:
 					close(client.Send)
 					delete(h.clients, client)

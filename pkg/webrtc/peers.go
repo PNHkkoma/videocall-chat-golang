@@ -67,17 +67,17 @@ type Peers struct{
 	TrackLocals map[string]*webrtc.TrackLocalStaticRTP // Được sử dụng để biểu diễn một luồng dữ liệu định tuyến thời gian thực (Real-Time Transport Protocol - RTP) cục bộ và không thay đổi (static).
 }
 
-type PeerConnectionState struct{
+type PeerConnectionState struct {
 	PeerConnection *webrtc.PeerConnection
-	websocket *ThreadSafeWrite
+	Websocket      *ThreadSafeWriter
 }
 
-type ThreadSafeWrite struct{
-	Conn *websocket.Conn
+type ThreadSafeWriter struct {
+	Conn  *websocket.Conn
 	Mutex sync.Mutex
 }
 
-func (t *ThreadSafeWrite) WriteJSON (v interface{}) error{
+func (t *ThreadSafeWriter) WriteJSON(v interface{}) error {
 	t.Mutex.Lock()
 	defer t.Mutex.Unlock()
 	return t.Conn.WriteJSON(v)
@@ -87,7 +87,7 @@ func (p *Peers) AddTrack (t *webrtc.TrackRemote) *webrtc.TrackLocalStaticRTP{
 	p.ListLock.Lock()
 	defer func ()  {
 		p.ListLock.Unlock()
-		p.SignalPeerConnection()
+		p.SignalPeerConnections()
 	}()
 
 	trackLocal, err :=webrtc.NewTrackLocalStaticRTP(t.Codec().RTPCodecCapability, t.ID(), t.StreamID())
@@ -103,16 +103,16 @@ func (p *Peers) RemoveTrack (t *webrtc.TrackLocalStaticRTP){
 	p.ListLock.Lock()
 	defer func(){
 		p.ListLock.Unlock()
-		p.SignalPeerConnection()
+		p.SignalPeerConnections()
 	}()
 	delete(p.TrackLocals, t.ID())
 }
 
-func (p *Peers) SignalPeerConnection(){
+func (p *Peers) SignalPeerConnections(){
 	p.ListLock.Lock()
 	defer func(){
 		p.ListLock.Unlock()
-		p.DispatchKeyFrames()
+		p.DispatchKeyFrame()
 	}()
 
 	attemptSync := func() (tryAgain bool){
@@ -151,13 +151,62 @@ func (p *Peers) SignalPeerConnection(){
 					}
 				}
 			}
-			
+
+			offer, err := p.Connections[i].PeerConnection.CreateOffer(nil)
+			if err != nil {
+				return true
+			}
+
+			if err = p.Connections[i].PeerConnection.SetLocalDescription(offer); err != nil {
+				return true
+			}
+
+			offerString, err := json.Marshal(offer)
+			if err != nil {
+				return true
+			}
+
+			if err = p.Connections[i].Websocket.WriteJSON(&websocketMessage{
+				Event: "offer",
+				Data:  string(offerString),
+			}); err != nil {
+				return true
+			}
+		}
+		return
+	}
+	for syncAttempt := 0; ; syncAttempt++ {
+		if syncAttempt == 25 {
+			go func() {
+				time.Sleep(time.Second * 3)
+				p.SignalPeerConnections()
+			}()
+			return
+		}
+
+		if !attemptSync() {
+			break
 		}
 	}
 }
 
-func (p *Peers) DispatchKeyFrames(){
+func (p *Peers) DispatchKeyFrame(){
+	p.ListLock.Lock()
+	defer p.ListLock.Unlock()
 
+	for i := range p.Connections {
+		for _, receiver := range p.Connections[i].PeerConnection.GetReceivers() {
+			if receiver.Track() == nil {
+				continue
+			}
+
+			_ = p.Connections[i].PeerConnection.WriteRTCP([]rtcp.Packet{
+				&rtcp.PictureLossIndication{
+					MediaSSRC: uint32(receiver.Track().SSRC()),
+				},
+			})
+		}
+	}
 }
 
 type wwebsockerMessage struct{

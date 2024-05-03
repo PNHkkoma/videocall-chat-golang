@@ -91,7 +91,7 @@ func (c *Client) writePump(){
 				w.Write(newline)
 				w.Write(<-c.Send)
 			}
-			if err := w.Close(); err != nill {
+			if err := w.Close(); err != nil {
 				return
 			}
 		case <- ticker.C:
