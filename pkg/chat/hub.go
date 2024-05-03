@@ -1,7 +1,8 @@
+//hub là như một phòng chat (trung tâm chat), cho phép user trò chuyện, trao đổi data với nhau, nhằm xây dựng cơ sở hạ tầng cho real-time
 package chat
 
+//định nghĩa 1 trung tâm cho chat, có các trường mảng người dùng, luồng phát tin, luồng đăng ký, luồng hủy đăng ký
 type Hub struct {
-	//định nghĩa 1 trung tâm cho chat
 	clients map[*Client]bool //map con trỏ *client (all) giá trị bool
 	broadcast chan []byte 
 	//chan là một kiểu dữ liệu được sử dụng để tạo ra và quản lý các kênh (channels), một cơ chế cung cấp giao tiếp đồng bộ giữa các goroutine. Kênh cho phép các goroutine gửi và nhận dữ liệu qua nó một cách an toàn và đồng bộ.
@@ -13,10 +14,10 @@ type Hub struct {
 //hàm giúp tạo phiên bản mới của hub
 func NewHub() *Hub{
 	return &Hub{
-		broadcast: make(chan []byte),
+		broadcast: make(chan []byte), //có vẻ cái này sẽ dùng nén gói tin...
 		register: make(chan *Client),
 		unregister: make(chan *Client),
-		client: make(map[*Client]bool)
+		client: make(map[*Client]bool),
 	}
 }
 

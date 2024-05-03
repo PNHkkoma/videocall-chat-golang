@@ -1,3 +1,10 @@
+package webrtc
+
+import (
+	"sync"
+	"video-chat/pkg/chat"
+)
+
 type Room struct{
 	//tạo ra cấu trúc của 1 room gồm có
 	Peers *Peers //con trỏ, tức là room sẽ gồm các peer

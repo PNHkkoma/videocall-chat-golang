@@ -1,4 +1,4 @@
-// cần 3 chức năng ở đây đó là
+// hàm định nghĩa và các chức năng của client
 package chat
 
 import (
@@ -19,32 +19,35 @@ const(
 
 var (
 	newline = []byte{'\n'}
-	space = []byte{''}
+	space = []byte{' '}
 )
 
 //cần 2 thứ đó là kích thước bộ đệm đột kích và
-var upgrader = websocket.FastHTTPUpgrader (
+var upgrader = websocket.FastHTTPUpgrader {
 	ReadBufferSize: 1024,
-	WriteBufferSize: 1024
-)
+	WriteBufferSize: 1024,
+}
 
 type Client struct{
 	//tạo biến client
 	Hub *Hub //có con trỏ tương ứng với hub
 	Conn *websocket.Conn //connect trỏ tới websocket
-	Send chan []byte //channel send dạng byte?
+	Send chan []byte //channel send dạng byte? chăc đây là tin gửi đi khi đc nén
 }
 
+//Pump có tác dụng kiểu sử lý dữ liệu đến và đi, điều phối dữ liệu, bộ lọc và sử lý ngoại lệ
 func (c *Client) readPump(){
+	//defer kiểu chạy cuối ấy
 	defer func(){
 		c.Hub.unregister <- c
 		c.Conn.Close()
 	}()
 
-	c.Conn.SetReadLimit(maxMessageSize)
-	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
+	c.Conn.SetReadLimit(maxMessageSize) //sets the maximum size in bytes for a message read from the peer
+	c.Conn.SetReadDeadline(time.Now().Add(pongWait)) //sets the write deadline(giới hạn thời gian) on the underlying(c) network connection
+	//SetPongHandler đặt trình xử lý cho các tin nhắn pong, ping là 1 mess từ 1 endpoint tơi endpoint khác, còn pong là tin nhắn phản hồi lại xác nhận kết  nối vẫn hoạt động và endpoint vẫn sẵng sàng để chuyền tải dữ liệu
 	c.Conn.SetPongHandler(func(string) error {c.Conn.SetReadDeadline(time.Now().Add(pongWait));		return nil})
-	d=//duyệt qua các mess
+	//duyệt qua các mess
 	for{
 		_, message, err := c.Conn.ReadMessage()
 		if err != nil {
@@ -55,13 +58,49 @@ func (c *Client) readPump(){
 			break;
 		}
 		//cắt bớt khoảng trắng của mess
-		message = byte.TrimSpace[bytes.Replace(message, newline, space, -1)]
+		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
 		c.Hub.broadcast <- message
 	}
 }
 
 func (c *Client) writePump(){
-
+	//đánh dấu time gửi tin của peer hiển thị trong room chat
+	ticker := time.NewTicker(pingPeriod)
+	defer func(){
+		ticker.Stop()
+		c.Conn.Close()
+	}()
+	for {
+		select{
+			//khi nhận được một số tin nhắn
+		case message, ok := <-c.Send:
+			//nếu nó đc gửi thì set thời gian đợi
+			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if !ok{
+				return
+			}
+			//viết theo nguyên tắc của nextWrite
+			w, err := c.Conn.NextWriter(websocket.TextMessage)
+			if err != nil{
+				return 
+			}
+			w.Write(message)
+			n := len(c.Send)
+			//xuống dòng sau khi write xong content message
+			for i:=0; i<n;i++{
+				w.Write(newline)
+				w.Write(<-c.Send)
+			}
+			if err := w.Close(); err != nill {
+				return
+			}
+		case <- ticker.C:
+			c.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				return 
+			}
+		}
+	}
 }
 
 //kết nối trò truyện ngang hàng
