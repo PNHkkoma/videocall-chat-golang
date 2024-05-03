@@ -1,18 +1,53 @@
 package webrtc
 
 import (
+	"encoding/json"
+	"log"
 	"sync"
+	"time"
+
 	"video-chat/pkg/chat"
+
+	"github.com/gofiber/websocket/v2"
+	"github.com/pion/rtcp"
+	"github.com/pion/webrtc/v3"
 )
 
+var (
+	RoomsLock sync.RWMutex //đánh dấu Room đã bị lock ko dùng đc 2 biến dưới
+	Rooms     map[string]*Room
+	Streams   map[string]*Room
+)
+
+var (
+	//config gì đó cần làm rõ
+	turnConfig = webrtc.Configuration{
+		ICETransportPolicy: webrtc.ICETransportPolicyRelay,
+		ICEServers: []webrtc.ICEServer{
+			{
+
+				URLs: []string{"stun:turn.localhost:3478"},
+			},
+			{
+
+				URLs: []string{"turn:turn.localhost:3478"},
+
+				Username: "akhil",
+
+				Credential:     "sharma",
+				CredentialType: webrtc.ICECredentialTypePassword,
+			},
+		},
+	}
+)
+
+//định nghĩa 1 Room gồm các Peers tham gia và hub chat được kết nối
 type Room struct{
-	//tạo ra cấu trúc của 1 room gồm có
-	Peers *Peers //con trỏ, tức là room sẽ gồm các peer
-	Hub *chat.Hub //phòng chat (dịch là trung tâm = center) hay công cụ của socket á
+	Peers *Peers
+	Hub *chat.Hub 
 }
 
 type Peers struct{
-	//cấu trúc của các peer
 	ListLock sync.RWMutex //có sync là biến đồng bộ đảm bảo tính nhất quán khi truy cập và chỉnh sửa Connections và TrackLocals, sync.RWMutex là một loại mutex trong Go, cho phép đồng bộ hóa truy cập đồng thời từ nhiều goroutines nhưng vẫn đảm bảo tính nhất quán.
 	//mutex là một khái niệm liên quan đến đồng bộ hóa, được sử dụng để đảm bảo chỉ một goroutine có thể truy cập vào một biến hoặc một phần của mã vào một thời điểm.
 	/*
@@ -31,6 +66,101 @@ type Peers struct{
 	Connections []PeerConnectionState //list connect of peers
 	TrackLocals map[string]*webrtc.TrackLocalStaticRTP // Được sử dụng để biểu diễn một luồng dữ liệu định tuyến thời gian thực (Real-Time Transport Protocol - RTP) cục bộ và không thay đổi (static).
 }
+
+type PeerConnectionState struct{
+	PeerConnection *webrtc.PeerConnection
+	websocket *ThreadSafeWrite
+}
+
+type ThreadSafeWrite struct{
+	Conn *websocket.Conn
+	Mutex sync.Mutex
+}
+
+func (t *ThreadSafeWrite) WriteJSON (v interface{}) error{
+	t.Mutex.Lock()
+	defer t.Mutex.Unlock()
+	return t.Conn.WriteJSON(v)
+}
+
+func (p *Peers) AddTrack (t *webrtc.TrackRemote) *webrtc.TrackLocalStaticRTP{
+	p.ListLock.Lock()
+	defer func ()  {
+		p.ListLock.Unlock()
+		p.SignalPeerConnection()
+	}()
+
+	trackLocal, err :=webrtc.NewTrackLocalStaticRTP(t.Codec().RTPCodecCapability, t.ID(), t.StreamID())
+	if err != nil{
+		log.Printf(err.Error())
+		return nil
+	}
+	p.TrackLocals[t.ID()] = trackLocal
+	return trackLocal
+}
+
+func (p *Peers) RemoveTrack (t *webrtc.TrackLocalStaticRTP){
+	p.ListLock.Lock()
+	defer func(){
+		p.ListLock.Unlock()
+		p.SignalPeerConnection()
+	}()
+	delete(p.TrackLocals, t.ID())
+}
+
+func (p *Peers) SignalPeerConnection(){
+	p.ListLock.Lock()
+	defer func(){
+		p.ListLock.Unlock()
+		p.DispatchKeyFrames()
+	}()
+
+	attemptSync := func() (tryAgain bool){
+		for i := range p.Connections {
+			if p.Connections[i].PeerConnection.ConnectionState() == webrtc.PeerConnectionStateClosed{
+				p.Connections = append(p.Connections[:i], p.Connections[i+1:]...)
+				log.Printf("a", p.Connections)
+				return true
+			}
+
+			existingSenders := map[string]bool{}
+			for _, sender := range p.Connections[i].PeerConnection.GetSenders(){
+				if sender.Track() == nil {
+					continue
+				}
+
+				existingSenders[sender.Track().ID()] = true
+
+				if _, ok := p.TrackLocals[sender.Track().ID()]; !ok {
+					if err := p.Connections[i].PeerConnection.RemoveTrack(sender); err != nil {
+						return true
+					}
+				}
+			}
+			for _, receiver := range p.Connections[i].PeerConnection.GetReceivers(){
+				if receiver.Track() == nil {
+					continue
+				}
+				existingSenders[receiver.Track().ID()] = true
+			}
+
+			for trackID := range p.TrackLocals{
+				if _, ok := existingSenders[trackID]; !ok{
+					if _, err := p.Connections[i].PeerConnection.AddTrack(p.TrackLocals[trackID]); err!=nil {
+						return true
+					}
+				}
+			}
+			
+		}
+	}
+}
+
 func (p *Peers) DispatchKeyFrames(){
 
+}
+
+type wwebsockerMessage struct{
+	Event string `json:"event"`
+	Data string `json:"data"`
 }
