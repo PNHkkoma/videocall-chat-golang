@@ -209,7 +209,7 @@ func (p *Peers) DispatchKeyFrame(){
 	}
 }
 
-type wwebsockerMessage struct{
+type websocketMessage struct{
 	Event string `json:"event"`
 	Data string `json:"data"`
 }

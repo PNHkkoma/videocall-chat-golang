@@ -55,10 +55,12 @@ func StreamConn(c *websocket.Conn, p *Peers) {
 			return
 		}
 
-		if writeErr := newPeer.Websocket.WriteJSON(&websocketMessage{
+		websocketMessage := &websocketMessage{
 			Event: "candidate",
 			Data:  string(candidateString),
-		}); writeErr != nil {
+		}
+		if writeErr := newPeer.Websocket.WriteJSON(websocketMessage)
+		 writeErr != nil {
 			log.Println(writeErr)
 		}
 	})
