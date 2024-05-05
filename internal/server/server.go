@@ -16,55 +16,55 @@ import (
 )
 
 var (
-	addr = flag.String("addr",":"+os.Getenv("POST"),"")
-	cert = flag.String("cert","","")
-	key = flag.String("key","","")
+	addr = flag.String("addr", ":"+os.Getenv("POST"), "")
+	cert = flag.String("cert", "", "")
+	key  = flag.String("key", "", "")
 )
 
 func Run() error {
 	flag.Parse()
 
-	if *addr == ":"{
+	if *addr == ":" {
 		*addr = ":8000"
 	}
 
 	//xem sự khác biệt TrackLocalStaticRTP và TrackLocalStaticSample
-	engine := html.New("./views",".html")
+	engine := html.New("../views", ".html")
 	app := fiber.New(fiber.Config{Views: engine})
 	app.Use(logger.New())
 	app.Use(cors.New())
 
-	app.Get("/", handlers.Welcome) 
+	app.Get("/", handlers.Welcome)
 	app.Get("/room/create", handlers.RoomCreate)
 	app.Get("/room/:uuid", handlers.Room)
-	app.Get("/room/:uuid/websocket",websocket.New(handlers.RoomChatWebsocket, websocket.Config{
-		HandshakeTimeout: 10*time.Second,
+	app.Get("/room/:uuid/websocket", websocket.New(handlers.RoomChatWebsocket, websocket.Config{
+		HandshakeTimeout: 10 * time.Second,
 	}))
-	app.Get("/room/:uuid/chat",handlers.RoomChat)
-	app.Get("/room/:uuid/chat/websocket",websocket.New(handlers.RoomChatWebsocket))
-	app.Get("/room/uuid/viewer/websocket",websocket.New(handlers.RoomViewerWebsocket))
+	app.Get("/room/:uuid/chat", handlers.RoomChat)
+	app.Get("/room/:uuid/chat/websocket", websocket.New(handlers.RoomChatWebsocket))
+	app.Get("/room/uuid/viewer/websocket", websocket.New(handlers.RoomViewerWebsocket))
 	app.Get("/stream/:ssuid", handlers.Stream)
 	app.Get("/stream/:ssuid/websocket", websocket.New(handlers.StreamWebsocket, websocket.Config{
-		HandshakeTimeout: 10*time.Second,
+		HandshakeTimeout: 10 * time.Second,
 	}))
-	app.Get("/stream/:ssuid/chat/websocket",websocket.New(handlers.StreamChatWebsocket))
-	app.Get("/stream/:ssuid/viewer/websocket",websocket.New(handlers.StreamViewerWebsocket))
-	app.Static("/","./assets")
+	app.Get("/stream/:ssuid/chat/websocket", websocket.New(handlers.StreamChatWebsocket))
+	app.Get("/stream/:ssuid/viewer/websocket", websocket.New(handlers.StreamViewerWebsocket))
+	app.Static("/", "../assets")
 
 	w.Rooms = make(map[string]*w.Room)
 	w.Streams = make(map[string]*w.Room)
 	go dispatchKeyFrames()
-	if *cert != ""{
+	if *cert != "" {
 		return app.ListenTLS(*addr, *cert, *key)
 	}
 	return app.Listen(*addr)
 
 }
 
-func dispatchKeyFrames(){
+func dispatchKeyFrames() {
 	//đây chính là khung hình chính điều phối hiển thị live của từng người dùng
-	for range time.NewTicker(time.Second *3).C{
-		for _,room := range w.Rooms{
+	for range time.NewTicker(time.Second * 3).C {
+		for _, room := range w.Rooms {
 			room.Peers.DispatchKeyFrame()
 		}
 	}
